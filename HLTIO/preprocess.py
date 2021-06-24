@@ -67,15 +67,25 @@ def computeClassWgt(y, y_test=None):
 
     return y_wgts, ytest_wgts, wgts
 
-def getNclass(df):
-    notBuilt = df[df['matchedTPsize']==-99999.]
-    combi = df[df['matchedTPsize']==0.]
-    simMatched = df[df['matchedTPsize']>0.].copy()
-    muMatched = df[ (df['bestMatchTP_pdgId']==13.) | (df['bestMatchTP_pdgId']==-13.) ]
+def setClassLabel(df):
+    expr = '''y_label = 0*(matchedTPsize==-99999.) +\
+                        1*(matchedTPsize==0.) +\
+                        2*((matchedTPsize>0.) &\
+                           ~((bestMatchTP_pdgId==13.) |\
+                             (bestMatchTP_pdgId==-13.))) +\
+                        3*((matchedTPsize>0.) &\
+                           ((bestMatchTP_pdgId==13.) |\
+                            (bestMatchTP_pdgId==-13.)))'''
+    df.eval(expr, engine='numexpr', inplace=True)
 
-    simMatched.drop(muMatched.index.values, inplace=True)
+    # df[df['y_label']<0][['bestMatchTP_pdgId']]
+    # df[df['y_label']==0][['bestMatchTP_pdgId']]
+    # df[df['y_label']==1][['bestMatchTP_pdgId']]
+    # df[df['y_label']==2][['bestMatchTP_pdgId']]
+    # df[df['y_label']==3][['bestMatchTP_pdgId']]
+    # df[df['y_label']>3][['bestMatchTP_pdgId']]
 
-    return notBuilt, combi, simMatched, muMatched
+    return df
 
 def filterClass(df):
     df.drop(
@@ -160,17 +170,19 @@ def addDistHitL1Tk(df, addAbsDist = True):
                                      (l1z{i}-hitz{i})**2) *\
                                     (hitx{i}+99999.)/(hitx{i}+99999.)'''
         df.eval(exprd2, engine='numexpr', inplace=True)
-        df[f'd2hitl1tk{i}'] = df[f'd2hitl1tk{i}'].fillna(-99999.)
+        # df[f'd2hitl1tk{i}'] = df[f'd2hitl1tk{i}'].fillna(-99999.)
 
         exprexpd2 = f'''expd2hitl1tk{i} = exp(-d2hitl1tk{i}) *\
                                           (hitx{i}+99999.)/(hitx{i}+99999.)'''
         df.eval(exprexpd2, engine='numexpr', inplace=True)
-        df[f'expd2hitl1tk{i}'] = df[f'expd2hitl1tk{i}'].fillna(-99999.)
+        # df[f'expd2hitl1tk{i}'] = df[f'expd2hitl1tk{i}'].fillna(-99999.)
 
     if not addAbsDist:
         df.drop(['d2hitl1tk1', 'd2hitl1tk2', 'd2hitl1tk3', 'd2hitl1tk4'],
                 axis=1,
                 inplace=True)
+
+    df = df.dropna(axis=1, how='all')
 
     return df
 

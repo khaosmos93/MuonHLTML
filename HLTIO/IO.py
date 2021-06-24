@@ -1,7 +1,6 @@
 import sys
 import glob
 import numpy as np
-# import ROOT
 import uproot
 from HLTIO import preprocess
 from sklearn.datasets import dump_svmlight_file
@@ -10,6 +9,8 @@ from scipy import sparse
 from pathlib import Path
 import math
 import pandas as pd
+import tqdm
+import gc
 
 def dR(eta1, phi1, eta2, phi2):
     dr = math.sqrt((eta1-eta2)*(eta1-eta2) + (phi1-phi2)*(phi1-phi2))
@@ -27,103 +28,54 @@ def dphi(phi1, phi2):
         tmpdphi = 2*math.pi - tmpdphi
     return tmpdphi
 
-"""
-def Read(path,varlist):
-    # Multi-thread
-    ROOT.ROOT.EnableImplicitMT()
-
-    f = ROOT.TFile.Open(path)
-    t = f.Get("tree")
-
-    mtx = t.AsMatrix(varlist)
-
-    return mtx
-
-def treeToDf(tree):
-    npArr, cols = tree.AsMatrix(return_labels=True)
-    df = pd.DataFrame(data=npArr, columns=cols)
-
-    return df
-"""
-
-def readSeedTree(path,treePath,minpt,maxpt,isB):
-    # ROOT.ROOT.EnableImplicitMT()
-    # f = ROOT.TFile.Open(path)
-    # tree = f.Get()
-    # df = treeToDf(tree)
-
+def readSeedTree(path,treePath, minpt = 0, maxpt = 1e9, eta_bound = 0.9):
     tree = uproot.open(path)[treePath]
+                       # array_cache = '1000 MB',
+                       # num_workers = 16)[treePath]
     df = tree.arrays(library='pd')
-
-    # df = df[ df['truePU'] > 180. ]
-    # df = df[ df['dR_minDRL1SeedP_AtVtx']   >= 0. ]
-    # df = df[ df['dR_minDPhiL1SeedX_AtVtx'] >= 0. ]
-    # df = df[ df['dR_minDRL2SeedP']         >= 0. ]
-    # df = df[ df['dR_minDPhiL2SeedX']       >= 0. ]
-    # df = df[ df['dR_L1TkMuSeedP']          >= 0. ]
-    # df = df[ df['dR_minDRL1SeedP_AtVtx']   < 9999. ]
-    # df = df[ df['dR_minDPhiL1SeedX_AtVtx'] < 9999. ]
-    # df = df[ df['dR_minDRL2SeedP']         < 9999. ]
-    # df = df[ df['dR_minDPhiL2SeedX']       < 9999. ]
-    # df = df[ df['dR_L1TkMuSeedP']          < 9999. ]
 
     df = df[ df['gen_pt'] < maxpt ]
     df = df[ df['gen_pt'] > minpt ]
-    if isB:
-        df = df[ ( (df['tsos_eta'] < 0.9) & (df['tsos_eta'] > -0.9) ) ]
-    else:
-        df = df[ ( (df['tsos_eta'] > 0.9) | (df['tsos_eta'] < -0.9) ) ]
+    df.loc[:,'hasL2'] = df.apply(preprocess.hasL2, axis=1)
+    df = preprocess.addDistHitL1Tk(df, addAbsDist=False)
+    df = preprocess.setClassLabel(df)
 
-    return preprocess.getNclass(df)
+    df_B = df[((df['tsos_eta'] < eta_bound) & (df['tsos_eta'] > -eta_bound))].copy()
+    df_E = df[((df['tsos_eta'] > eta_bound) | (df['tsos_eta'] < -eta_bound))].copy()
 
-def readMinSeeds(dir,treePath,minpt,maxpt,isB):
-    filelist = glob.glob(dir)
-    full = pd.DataFrame()
-    y = np.array([]).reshape(0,)
-    n = np.array([0,0,0,0])
-    cut = 500000
+    del df
+    gc.collect()
 
-    nfile = 0
-    for path in filelist:
-        print('Processing %dth file %s ...' % (nfile, path) )
-        if np.all( n >= cut ):
-            continue
+    return preprocess.filterClass(df_B), preprocess.filterClass(df_E)
 
-        notBuilt, combi, simMatched, muMatched = readSeedTree(path,treePath,minpt,maxpt,isB)
-        subset = pd.DataFrame()
-        n_ = np.array([0,0,0,0])
-        y_ = np.array([]).reshape(0,)
-        if n[0] < cut:
-            subset = subset.append(notBuilt,ignore_index=True)
-            y_ = np.hstack( ( y_, np.full(notBuilt.shape[0],0) ) )
-            n_[0] = notBuilt.shape[0]
-        if n[1] < cut:
-            subset = subset.append(combi,ignore_index=True)
-            y_ = np.hstack( ( y_, np.full(combi.shape[0],1) ) )
-            n_[1] = combi.shape[0]
-        if n[2] < cut:
-            subset = subset.append(simMatched,ignore_index=True)
-            y_ = np.hstack( ( y_, np.full(simMatched.shape[0],2) ) )
-            n_[2] = simMatched.shape[0]
-        if n[3] < cut:
-            subset = subset.append(muMatched,ignore_index=True)
-            y_ = np.hstack( ( y_, np.full(muMatched.shape[0],3) ) )
-            n_[3] = muMatched.shape[0]
+def sampleByLabel(df, df_add = None, n = 500000):
+    out = pd.DataFrame()
+    df_tmp = None
+    df_add_tmp = None
+    for il in range(4):
+        df_tmp = df[df['y_label']==il]
+        if df_tmp.shape[0] < n and df_add is not None:
+            df_add_tmp = df_add[df_add['y_label']==il]
+            df_tmp = df_tmp.append(df_add_tmp, ignore_index=True)
+        if df_tmp.shape[0] > n:
+            df_tmp = df_tmp.sample(n=min(n,df_tmp.shape[0]), axis=0, random_state=123456)
+        out = out.append(df_tmp, ignore_index=True)
 
-        full = full.append(subset, ignore_index=True)
-        n += n_
-        y = np.hstack( (y,y_) )
+    del df, df_add, df_tmp, df_add_tmp
+    gc.collect()
 
-        full = preprocess.filterClass(full)
-        full['hasL2'] = full.apply(preprocess.hasL2, axis=1)
-        full = preprocess.addDistHitL1Tk(full, addAbsDist=False)
+    return out
 
-        nfile = nfile+1
-
-    print(treePath + ' | %d/%d files | (notBuilt, combi, simMatched, muMatched) = (%d, %d, %d, %d) seeds added' % \
-        (nfile, len(filelist), n[0], n[1], n[2], n[3]))
-
-    return full, y
+def dropDummyColumn(df):
+    df_nunique = df.nunique()
+    cols_to_drop = df_nunique[df_nunique == 1].index
+    cols_to_drop = (df[cols_to_drop] == -99999.).all(axis=0)
+    cols_to_drop = cols_to_drop[cols_to_drop==True].index
+    if cols_to_drop.shape[0] > 0:
+        df.drop(cols_to_drop,
+                axis=1,
+                inplace=True)
+    return df
 
 def dumpsvm(x, y, filename):
     dump_svmlight_file(x, y, filename, zero_based=True)
@@ -135,31 +87,3 @@ def loadsvm(filepath):
     x = x.toarray()
 
     return x, y
-
-"""
-def maketest(mu,sigma,name):
-    testfile = ROOT.TFile("./data/test"+name+".root","RECREATE")
-    tree = ROOT.TTree("tree","test")
-    v1 = np.empty((1), dtype="float32")
-    v2 = np.empty((1), dtype="float32")
-    v3 = np.empty((1), dtype="float32")
-    v4 = np.empty((1), dtype="float32")
-    v5 = np.empty((1), dtype="float32")
-    tree.Branch("v1",v1,"v1/F")
-    tree.Branch("v2",v2,"v2/F")
-    tree.Branch("v3",v3,"v3/F")
-    tree.Branch("v4",v4,"v4/F")
-    tree.Branch("v5",v5,"v5/F")
-
-    for i in range(10000):
-        v1[0] = np.random.normal(mu,sigma,1)
-        v2[0] = np.random.normal(mu,sigma,1)
-        v3[0] = np.random.normal(mu,sigma,1)
-        v4[0] = np.random.normal(mu,sigma,1)
-        v5[0] = np.random.normal(mu,sigma,1)
-        tree.Fill()
-    testfile.Write()
-    testfile.Close()
-
-    return
-"""

@@ -15,6 +15,10 @@ import hyperopt
 import pickle
 import math
 import os
+import time
+import glob
+import tqdm
+import gc
 
 def getBestParam(seedname,tag):
     # note that optimized parameters always depend on the training set i.e. needs to be re-optimized when using different set
@@ -140,8 +144,8 @@ def doXGB(version, seed, seedname, tag, doLoad, stdTransPar=None):
     param['eval_metric'] = 'mlogloss'
 
     # HERE CPU
-    # param['tree_method'] = 'gpu_hist'
-    # param['nthread'] = 4
+    param['tree_method'] = 'gpu_hist'
+    param['nthread'] = 4
 
     num_round = 200
 
@@ -246,10 +250,22 @@ def doXGB(version, seed, seedname, tag, doLoad, stdTransPar=None):
 
     return
 
-def run_quick(seedname):
-    doLoad = False
+def run_quick(seedname, doLoad = False):
 
-    ntuple_path = 'data/ntuple_1-17.root'
+    # ntuple_path = 'data/ntuple_1-17.root'
+    ntuple_path = '/home/common/TT_seedNtuple_GNN_v200622/ntuple_94.root'
+
+    df_B, df_E = IO.readSeedTree(ntuple_path, 'seedNtupler/'+seedname)
+
+    seed_label_B = (
+        df_B.drop(['y_label'], axis=1),
+        df_B.loc[:,'y_label'].values
+    )
+
+    seed_label_E = (
+        df_E.drop(['y_label'], axis=1),
+        df_E.loc[:,'y_label'].values
+    )
 
     tag = 'Barrel'
     print("\n\nStart: %s|%s" % (seedname, tag))
@@ -259,27 +275,33 @@ def run_quick(seedname):
         scaleMean = getattr(scalefile, version+"_"+tag+"_"+seedname+"_ScaleMean")
         scaleStd  = getattr(scalefile, version+"_"+tag+"_"+seedname+"_ScaleStd")
         stdTrans = [ scaleMean, scaleStd ]
-    seed = IO.readMinSeeds(ntuple_path, 'seedNtupler/'+seedname, 0.,99999.,True)
-    doXGB('vTEST',seed,seedname,tag,doLoad,stdTrans)
+    doXGB('vTEST',seed_label_B,seedname,tag,doLoad,stdTrans)
 
-    # tag = 'Endcap'
-    # print("\n\nStart: %s|%s" % (seedname, tag))
-    # stdTrans = None
-    # if doLoad:
-    #     scalefile = importlib.import_module("scalefiles."+tag+"_"+seedname+"_scale")
-    #     scaleMean = getattr(scalefile, version+"_"+tag+"_"+seedname+"_ScaleMean")
-    #     scaleStd  = getattr(scalefile, version+"_"+tag+"_"+seedname+"_ScaleStd")
-    #     stdTrans = [ scaleMean, scaleStd ]
-    # seed = IO.readMinSeeds(ntuple_path, 'seedNtupler/'+seedname, 0.,99999.,False)
-    # doXGB('vTEST',seed,seedname,tag,doLoad,stdTrans)
+    tag = 'Endcap'
+    print("\n\nStart: %s|%s" % (seedname, tag))
+    stdTrans = None
+    if doLoad:
+        scalefile = importlib.import_module("scalefiles."+tag+"_"+seedname+"_scale")
+        scaleMean = getattr(scalefile, version+"_"+tag+"_"+seedname+"_ScaleMean")
+        scaleStd  = getattr(scalefile, version+"_"+tag+"_"+seedname+"_ScaleStd")
+        stdTrans = [ scaleMean, scaleStd ]
+    doXGB('vTEST',seed_label_E,seedname,tag,doLoad,stdTrans)
 
     return
 
-def run(version, seedname, tag):
-    doLoad = True # False
-    isB = ('Barrel' in tag)
+def load(seedname, ntuple_path):
+    time_init = time.time()
+    df_B, df_E = IO.readSeedTree(ntuple_path, 'seedNtupler/'+seedname)
+    out = {
+        'seedname': seedname,
+        'df_B': df_B,
+        'df_E': df_E,
+        'time': (time.time()-time_init)
+    }
+    return out
 
-    ntuple_path = '/data/shko/DYToLL_M-50_TuneCP5_14TeV-pythia8/crab_PU200-DYToLL_M50_Seed_ROIv01_20210106/210106_113339/0000/ntuple_*.root'
+def run(version, seedname, seed, tag, doLoad = False):
+    time_init = time.time()
 
     stdTrans = None
     if doLoad:
@@ -289,32 +311,143 @@ def run(version, seedname, tag):
         stdTrans = [ scaleMean, scaleStd ]
 
     print("\n\nStart: %s|%s" % (seedname, tag))
-    seed = IO.readMinSeeds(ntuple_path, 'seedNtupler/'+seedname, 0.,99999.,isB)
+
     doXGB(version, seed, seedname, tag, doLoad, stdTrans)
     # doTrain(version, seed, seedname, tag, doLoad, stdTrans)
 
-if __name__ == '__main__':
-    run_quick('NThltIter2FromL1')
+    return seedname, tag, (time.time() - time_init)
 
-    """
+if __name__ == '__main__':
     from warnings import simplefilter
     simplefilter(action='ignore', category=FutureWarning)
 
-    VER = 'HLTTDR_vTDR'
-    # seedlist = ['NThltIterL3OI','NThltIter0','NThltIter2','NThltIter3','NThltIter0FromL1','NThltIter2FromL1','NThltIter3FromL1']
-    seedlist = list(sys.argv[1].split(','))
-    taglist  = ['Barrel','Endcap']
-    seed_run_list = [ (VER, seed, tag) for tag in taglist for seed in seedlist ]
+    # run_quick('NThltIter2FromL1')
+    # sys.exit()
+
+    ################################################
 
     gpu_id = sys.argv[2]
     os.environ["CUDA_VISIBLE_DEVICES"]=gpu_id
 
-    # run_quick('NThltIter2FromL1')
+    timer = {}
 
-    pool = multiprocessing.Pool(processes=2)
-    pool.starmap(run,seed_run_list)
+    VER = 'vTEST'
+    NSAMPLE = 500000
+
+    ntuple_path = '/home/common/TT_seedNtuple_GNN_v200622/ntuple_*.root'
+    all_files = glob.glob(ntuple_path)
+
+    seedlist = ['NThltIterL3OI',
+                'NThltIter0','NThltIter2','NThltIter3',
+                'NThltIter0FromL1','NThltIter2FromL1','NThltIter3FromL1']
+    seedlist = list(sys.argv[1].split(','))
+
+    print('-'*70)
+    print(f'Version: {VER}')
+    print(f'Input files: {len(all_files)} files from')
+    print(f'             {ntuple_path}')
+    print(f'N seeds per class: {NSAMPLE}')
+    print('Seed types:')
+    for seed_name in seedlist:
+        print(f'\t{seed_name}')
+    print('-'*70)
+
+    jobs_load = [[seed_name, file_path] for seed_name in seedlist for file_path in all_files]
+    jobs_load = np.array(jobs_load).T.tolist()
+    assert len(jobs_load[0]) == len(jobs_load[1])
+    njobs_load = len(jobs_load[0])
+
+    import dask
+    from dask.distributed import Client
+    from distributed.diagnostics.progressbar import progress
+    dask.config.set({"temporary-directory": "/home/msoh/dask-temp/"})
+    client = Client(processes=True,
+                    n_workers=24,
+                    threads_per_worker=1,
+                    memory_limit='4GB')
+    print('*'*30)
+    print('Dask Client:')
+    print(client)
+    print('Dashboard: {}'.format(client.dashboard_link))
+    print('*'*30)
+
+    print(f'\nLoading ntuples: # jobs = {njobs_load}')
+    futures_load = client.map(load, *jobs_load, priority=100)
+    progress(futures_load)
+    print('>>> done!')
+    gc.collect()
+
+    print(f'\nMerging dataframes:')
+    time_merge = time.time()
+    results_load = {}
+    for out in tqdm.tqdm(futures_load):
+        res = out.result()
+        seedname = res['seedname']
+
+        if seedname not in results_load.keys():
+            results_load[seedname] = {'df_B': res['df_B'], 'df_E': res['df_E']}
+        else:
+            results_load[seedname]['df_B'] = IO.sampleByLabel(results_load[seedname]['df_B'],
+                                                              df_add = res['df_B'],
+                                                              n = NSAMPLE)
+            results_load[seedname]['df_E'] = IO.sampleByLabel(results_load[seedname]['df_E'],
+                                                              df_add = res['df_E'],
+                                                              n = NSAMPLE)
+
+        if f'[1] Load {seedname} per file' not in timer.keys():
+            timer[f'[1] Load {seedname} per file'] = res['time']/float(len(all_files))
+        else:
+            timer[f'[1] Load {seedname} per file'] += res['time']/float(len(all_files))
+
+        gc.collect()
+
+    workers = [w for w in client.scheduler_info()['workers'].keys()]
+    client.retire_workers(workers=workers)
+    client.close()
+    timer[f'[2] Merge'] = time.time() - time_merge
+    print('>>> done!')
+
+    print('\nRunning xgboost:')
+    run_list = []
+    for seedname, res in results_load.items():
+
+        seed_label_B = (
+            IO.dropDummyColumn(res['df_B']).drop(['y_label'], axis=1),
+            res['df_B'].loc[:,'y_label'].values
+        )
+
+        seed_label_E = (
+            IO.dropDummyColumn(res['df_E']).drop(['y_label'], axis=1),
+            res['df_E'].loc[:,'y_label'].values
+        )
+
+        run_list.append((VER, seedname, seed_label_B, 'Barrel'))
+        run_list.append((VER, seedname, seed_label_E, 'Endcap'))
+
+    pool = multiprocessing.Pool(processes=min(16,len(run_list)))
+    results_run = pool.starmap(run,run_list)
     pool.close()
     pool.join()
-    """
+    gc.collect()
+
+    for seedname, tag, time_run in results_run:
+        timer[f'[3] Run {seedname} {tag}'] = time_run
+    print('>>> done!')
+
+    # -- Timing summary -- #
+    print('')
+    print('-'*70)
+    print(f'Timing summary: {VER}')
+    time_total = 0
+    for _key, _time in timer.items():
+        time_total += _time
+        unit = 'sec' if _time < 60. else 'min'
+        time = round((_time/60. if _time > 60. else _time), 2)
+        print(f'\t{_key}: {time} {unit}')
+    unit_total = 'sec' if time_total < 60. else 'min'
+    time_total = round((time_total/60. if time_total > 60. else time_total), 2)
+    print(f'Total: {time_total} {unit_total}')
+    print('-'*70)
+    # -- #
 
     print('Finished')
