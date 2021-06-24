@@ -325,17 +325,16 @@ if __name__ == '__main__':
     # run_quick('NThltIter2FromL1')
     # sys.exit()
 
-    ################################################
-
+    ##############
+    # -- Main -- #
+    ##############
     gpu_id = sys.argv[2]
     os.environ["CUDA_VISIBLE_DEVICES"]=gpu_id
 
-    timer = {}
-
-    VER = 'vTEST'
+    VER = 'vTEST9'
     NSAMPLE = 500000
 
-    ntuple_path = '/home/common/TT_seedNtuple_GNN_v200622/ntuple_*.root'
+    ntuple_path = '/home/common/TT_seedNtuple_GNN_v200622/ntuple*.root'
     all_files = glob.glob(ntuple_path)
 
     seedlist = ['NThltIterL3OI',
@@ -349,14 +348,11 @@ if __name__ == '__main__':
     print(f'             {ntuple_path}')
     print(f'N seeds per class: {NSAMPLE}')
     print('Seed types:')
-    for seed_name in seedlist:
-        print(f'\t{seed_name}')
+    for seedname in seedlist:
+        print(f'\t{seedname}')
     print('-'*70)
 
-    jobs_load = [[seed_name, file_path] for seed_name in seedlist for file_path in all_files]
-    jobs_load = np.array(jobs_load).T.tolist()
-    assert len(jobs_load[0]) == len(jobs_load[1])
-    njobs_load = len(jobs_load[0])
+    timer = {}
 
     import dask
     from dask.distributed import Client
@@ -364,67 +360,96 @@ if __name__ == '__main__':
     logger = logging.getLogger("distributed.utils_perf")
     logger.setLevel(logging.ERROR)
     dask.config.set({"temporary-directory": "/home/msoh/dask-temp/"})
-    client = Client(processes=True,
-                    n_workers=24,
-                    threads_per_worker=1,
-                    memory_limit='6GB',
-                    silence_logs='error')
+    client = Client(
+        processes=True,
+        n_workers=16,
+        threads_per_worker=2,
+        memory_limit='5GB',
+        silence_logs=logging.ERROR
+    )
     print('*'*30)
     print('Dask Client:')
     print(client)
     print('Dashboard: {}'.format(client.dashboard_link))
     print('*'*30)
 
-    print(f'\nLoading ntuples: # jobs = {njobs_load}')
+    ################################################
+    jobs_load = [[seedname, file_path] for seedname in seedlist for file_path in all_files]
+    jobs_load = np.array(jobs_load).T.tolist()
+    assert len(jobs_load[0]) == len(jobs_load[1])
+    njobs_load = len(jobs_load[0])
+    print(f'\n>>> Loading ntuples: # jobs = {njobs_load}')
+
     futures_load = client.map(load, *jobs_load, priority=100)
     progress(futures_load)
-    print('>>> done!')
     gc.collect()
+    print('>>> done!')
+    ################################################
 
-    print(f'\nMerging dataframes:')
-    time_merge = time.time()
+    ################################################
+    print(f'\n>>> Append dataframes')
+    time_append = time.time()
+
     results_load = {}
     for out in tqdm.tqdm(futures_load):
         res = out.result()
         seedname = res['seedname']
-
         if seedname not in results_load.keys():
-            results_load[seedname] = {'df_B': res['df_B'], 'df_E': res['df_E']}
+            results_load[seedname] = {'df_B': [res['df_B']], 'df_E': [res['df_E']]}
         else:
-            results_load[seedname]['df_B'] = IO.sampleByLabel(results_load[seedname]['df_B'],
-                                                              df_add = res['df_B'],
-                                                              n = NSAMPLE)
-            results_load[seedname]['df_E'] = IO.sampleByLabel(results_load[seedname]['df_E'],
-                                                              df_add = res['df_E'],
-                                                              n = NSAMPLE)
+            results_load[seedname]['df_B'].append(res['df_B'])
+            results_load[seedname]['df_E'].append(res['df_E'])
 
         if f'[1] Load {seedname} per file' not in timer.keys():
             timer[f'[1] Load {seedname} per file'] = res['time']/float(len(all_files))
         else:
             timer[f'[1] Load {seedname} per file'] += res['time']/float(len(all_files))
+        del out, res
+        gc.collect()
 
-    gc.collect()
-
+    timer[f'[2] Append'] = time.time() - time_append
     workers = [w for w in client.scheduler_info()['workers'].keys()]
     client.retire_workers(workers=workers)
     client.close()
-    timer[f'[2] Merge'] = time.time() - time_merge
+    gc.collect()
     print('>>> done!')
+    ################################################
 
-    print('\nRunning xgboost:')
+    ################################################
+    print(f'\n>>> Merge and Downsample')
+    time_down = time.time()
+    for seedname in tqdm.tqdm(results_load.keys()):
+        results_load[seedname]['df_B'] = pd.concat(
+            (df for df in results_load[seedname]['df_B']),
+            axis=0, ignore_index=True
+        )
+        results_load[seedname]['df_B'] = IO.sampleByLabel(results_load[seedname]['df_B'],
+                                                          n = NSAMPLE)
+        results_load[seedname]['df_E'] = pd.concat(
+            (df for df in results_load[seedname]['df_E']),
+            axis=0, ignore_index=True
+        )
+        results_load[seedname]['df_E'] = IO.sampleByLabel(results_load[seedname]['df_E'],
+                                                          n = NSAMPLE)
+        gc.collect()
+
+    timer[f'[3] Merge and Downsample'] = time.time() - time_down
+    gc.collect()
+    print('>>> done!')
+    ################################################
+
+    ################################################
+    print('\n>>> Running xgboost')
     run_list = []
     for seedname, res in results_load.items():
-
         seed_label_B = (
             IO.dropDummyColumn(res['df_B']).drop(['y_label'], axis=1),
             res['df_B'].loc[:,'y_label'].values
         )
-
         seed_label_E = (
             IO.dropDummyColumn(res['df_E']).drop(['y_label'], axis=1),
             res['df_E'].loc[:,'y_label'].values
         )
-
         run_list.append((VER, seedname, seed_label_B, 'Barrel'))
         run_list.append((VER, seedname, seed_label_E, 'Endcap'))
 
@@ -435,7 +460,7 @@ if __name__ == '__main__':
     gc.collect()
 
     for seedname, tag, time_run in results_run:
-        timer[f'[3] Run {seedname} {tag}'] = time_run
+        timer[f'[4] Run {seedname} {tag}'] = time_run
     print('>>> done!')
 
     # -- Timing summary -- #

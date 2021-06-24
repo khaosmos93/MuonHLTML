@@ -43,7 +43,7 @@ def readSeedTree(path,treePath, minpt = 0, maxpt = 1e9, eta_bound = 0.9):
     df_B = df[((df['tsos_eta'] < eta_bound) & (df['tsos_eta'] > -eta_bound))].copy()
     df_E = df[((df['tsos_eta'] > eta_bound) | (df['tsos_eta'] < -eta_bound))].copy()
 
-    del df
+    del df, tree
     gc.collect()
 
     return preprocess.filterClass(df_B), preprocess.filterClass(df_E)
