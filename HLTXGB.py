@@ -138,8 +138,10 @@ def doXGB(version, seed, seedname, tag, doLoad, stdTransPar=None):
     param['num_class'] = 4
     param['subsample'] = 0.5
     param['eval_metric'] = 'mlogloss'
-    param['tree_method'] = 'gpu_hist'
-    param['nthread'] = 4
+
+    # HERE CPU
+    # param['tree_method'] = 'gpu_hist'
+    # param['nthread'] = 4
 
     num_round = 200
 
@@ -247,9 +249,9 @@ def doXGB(version, seed, seedname, tag, doLoad, stdTransPar=None):
 def run_quick(seedname):
     doLoad = False
 
-    ntuple_path = '/home/msoh/MuonHLTML_Run3/data/ntuple_81.root'
+    ntuple_path = 'data/ntuple_1-17.root'
 
-    tag = 'TESTBarrel'
+    tag = 'Barrel'
     print("\n\nStart: %s|%s" % (seedname, tag))
     stdTrans = None
     if doLoad:
@@ -260,23 +262,24 @@ def run_quick(seedname):
     seed = IO.readMinSeeds(ntuple_path, 'seedNtupler/'+seedname, 0.,99999.,True)
     doXGB('vTEST',seed,seedname,tag,doLoad,stdTrans)
 
-    tag = 'TESTEndcap'
-    print("\n\nStart: %s|%s" % (seedname, tag))
-    stdTrans = None
-    if doLoad:
-        scalefile = importlib.import_module("scalefiles."+tag+"_"+seedname+"_scale")
-        scaleMean = getattr(scalefile, version+"_"+tag+"_"+seedname+"_ScaleMean")
-        scaleStd  = getattr(scalefile, version+"_"+tag+"_"+seedname+"_ScaleStd")
-        stdTrans = [ scaleMean, scaleStd ]
-    seed = IO.readMinSeeds(ntuple_path, 'seedNtupler/'+seedname, 0.,99999.,False)
-    doXGB('vTEST',seed,seedname,tag,doLoad)
+    # tag = 'Endcap'
+    # print("\n\nStart: %s|%s" % (seedname, tag))
+    # stdTrans = None
+    # if doLoad:
+    #     scalefile = importlib.import_module("scalefiles."+tag+"_"+seedname+"_scale")
+    #     scaleMean = getattr(scalefile, version+"_"+tag+"_"+seedname+"_ScaleMean")
+    #     scaleStd  = getattr(scalefile, version+"_"+tag+"_"+seedname+"_ScaleStd")
+    #     stdTrans = [ scaleMean, scaleStd ]
+    # seed = IO.readMinSeeds(ntuple_path, 'seedNtupler/'+seedname, 0.,99999.,False)
+    # doXGB('vTEST',seed,seedname,tag,doLoad,stdTrans)
+
+    return
 
 def run(version, seedname, tag):
     doLoad = True # False
     isB = ('Barrel' in tag)
 
     ntuple_path = '/data/shko/DYToLL_M-50_TuneCP5_14TeV-pythia8/crab_PU200-DYToLL_M50_Seed_ROIv01_20210106/210106_113339/0000/ntuple_*.root'
-    # ntuple_path = '/home/common/DY_seedNtuple_v20200510/ntuple_*.root'
 
     stdTrans = None
     if doLoad:
@@ -291,6 +294,9 @@ def run(version, seedname, tag):
     # doTrain(version, seed, seedname, tag, doLoad, stdTrans)
 
 if __name__ == '__main__':
+    run_quick('NThltIter2FromL1')
+
+    """
     from warnings import simplefilter
     simplefilter(action='ignore', category=FutureWarning)
 
@@ -309,5 +315,6 @@ if __name__ == '__main__':
     pool.starmap(run,seed_run_list)
     pool.close()
     pool.join()
+    """
 
-print('Finished')
+    print('Finished')

@@ -127,6 +127,9 @@ def train(train_loader,model,device,optimizer,wgts):
     loss_all = 0.
 
     for data in train_loader:
+        # HERE
+        print(data)
+        sys.exit()
         data = data.to(device)
         optimizer.zero_grad()
         output = model(data)
@@ -208,19 +211,51 @@ def run(seedname, runname):
     doLoad = False
     isB = ('Barrel' in runname)
 
-    ntuple_path = 'data/ntuple.root'
-    # ntuple_path = '/home/common/DY_seedNtuple_v20200510/ntuple_*.root'
+    ntuple_path = 'data/ntuple_1-17.root'
 
     print("\n\nStart: %s|%s" % (seedname, runname))
     data, y = IO.readMinSeeds(ntuple_path, 'seedNtupler/'+seedname, 0.,99999.,isB)
-    data = data[['nHits','l1x1','l1y1','l1z1','hitx1','hity1','hitz1','l1x2','l1y2','l1z2','hitx2','hity2','hitz2','l1x3','l1y3','l1z3','hitx3','hity3','hitz3','l1x4','l1y4','l1z4','hitx4','hity4','hitz4']]
+    data = data[['nHits',
+                 'l1x1','l1y1','l1z1',
+                 'hitx1','hity1','hitz1',
+                 'l1x2','l1y2','l1z2',
+                 'hitx2','hity2','hitz2',
+                 'l1x3','l1y3','l1z3',
+                 'hitx3','hity3','hitz3',
+                 'l1x4','l1y4','l1z4',
+                 'hitx4','hity4','hitz4']]
+
+    # HERE
+    # print(data)
+    # print(y)
+    data = data[:5]
+    y = y[:5]
+    print(data)
+    print(y)
 
     select = data['nHits']>0
     select_np = select.to_numpy()
     data = data[select]
     y = y[select_np]
 
+    # HERE
+    # print(select)
+    # print(select_np)
+    # print(data)
+    # print(y)
+    # sys.exit()
+
     data_list = trackletDataset(data, y)
+
+    # HERE
+    print(data_list)
+
     GNN(data_list,y,seedname,runname)
 
-run('NThltIter2FromL1','PU180to200Barrel')
+if __name__ == '__main__':
+    run('NThltIter2','test')
+
+
+
+
+

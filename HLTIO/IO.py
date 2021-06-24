@@ -1,7 +1,8 @@
 import sys
 import glob
 import numpy as np
-import ROOT
+# import ROOT
+import uproot
 from HLTIO import preprocess
 from sklearn.datasets import dump_svmlight_file
 from sklearn.datasets import load_svmlight_file
@@ -10,7 +11,6 @@ from pathlib import Path
 import math
 import pandas as pd
 
-# IO (Require ROOT version > 6.14)
 def dR(eta1, phi1, eta2, phi2):
     dr = math.sqrt((eta1-eta2)*(eta1-eta2) + (phi1-phi2)*(phi1-phi2))
     return dr
@@ -27,6 +27,7 @@ def dphi(phi1, phi2):
         tmpdphi = 2*math.pi - tmpdphi
     return tmpdphi
 
+"""
 def Read(path,varlist):
     # Multi-thread
     ROOT.ROOT.EnableImplicitMT()
@@ -43,13 +44,16 @@ def treeToDf(tree):
     df = pd.DataFrame(data=npArr, columns=cols)
 
     return df
+"""
 
 def readSeedTree(path,treePath,minpt,maxpt,isB):
-    ROOT.ROOT.EnableImplicitMT()
+    # ROOT.ROOT.EnableImplicitMT()
+    # f = ROOT.TFile.Open(path)
+    # tree = f.Get()
+    # df = treeToDf(tree)
 
-    f = ROOT.TFile.Open(path)
-    tree = f.Get(treePath)
-    df = treeToDf(tree)
+    tree = uproot.open(path)[treePath]
+    df = tree.arrays(library='pd')
 
     # df = df[ df['truePU'] > 180. ]
     # df = df[ df['dR_minDRL1SeedP_AtVtx']   >= 0. ]
@@ -112,6 +116,7 @@ def readMinSeeds(dir,treePath,minpt,maxpt,isB):
 
         full = preprocess.filterClass(full)
         full['hasL2'] = full.apply(preprocess.hasL2, axis=1)
+        full = preprocess.addDistHitL1Tk(full, addAbsDist=False)
 
         nfile = nfile+1
 
@@ -131,6 +136,7 @@ def loadsvm(filepath):
 
     return x, y
 
+"""
 def maketest(mu,sigma,name):
     testfile = ROOT.TFile("./data/test"+name+".root","RECREATE")
     tree = ROOT.TTree("tree","test")
@@ -156,3 +162,4 @@ def maketest(mu,sigma,name):
     testfile.Close()
 
     return
+"""

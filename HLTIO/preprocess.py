@@ -50,7 +50,7 @@ def dfSigBkg(df):
     return df, y
 
 def computeClassWgt(y, y_test=None):
-    wgts = utils.class_weight.compute_class_weight('balanced',np.unique(y),y)
+    wgts = utils.class_weight.compute_class_weight('balanced',classes=np.unique(y),y=y)
 
     y_wgts = np.full(y.shape[0],1.)
 
@@ -80,10 +80,10 @@ def getNclass(df):
 def filterClass(df):
     df.drop(
         [
-            'mva0',
-            'mva1',
-            'mva2',
-            'mva3',
+            # 'mva0',
+            # 'mva1',
+            # 'mva2',
+            # 'mva3',
             'truePU',
             'dir',
             'tsos_detId',
@@ -133,7 +133,15 @@ def filterClass(df):
             'matchedTPsize',
             'gen_pt',
             'gen_eta',
-            'gen_phi'
+            'gen_phi',
+            'bestMatchTP_GenPt',
+            'bestMatchTP_GenEta',
+            'bestMatchTP_GenPhi',
+            'bestMatchTP_Gen_isPromptFinalState',
+            'bestMatchTP_Gen_isHardProcess',
+            'bestMatchTP_Gen_fromHardProcessFinalState',
+            'bestMatchTP_Gen_fromHardProcessDecayed',
+            'nHits'
             ],
         axis=1, inplace=True
     )
@@ -144,6 +152,27 @@ def hasL2(row):
     if row['dR_minDRL2SeedP'] < 0.:
         return 0
     return 1
+
+def addDistHitL1Tk(df, addAbsDist = True):
+    for i in range(1,5):
+        exprd2 = f'''d2hitl1tk{i} = ((l1x{i}-hitx{i})**2 +\
+                                     (l1y{i}-hity{i})**2 +\
+                                     (l1z{i}-hitz{i})**2) *\
+                                    (hitx{i}+99999.)/(hitx{i}+99999.)'''
+        df.eval(exprd2, engine='numexpr', inplace=True)
+        df[f'd2hitl1tk{i}'] = df[f'd2hitl1tk{i}'].fillna(-99999.)
+
+        exprexpd2 = f'''expd2hitl1tk{i} = exp(-d2hitl1tk{i}) *\
+                                          (hitx{i}+99999.)/(hitx{i}+99999.)'''
+        df.eval(exprexpd2, engine='numexpr', inplace=True)
+        df[f'expd2hitl1tk{i}'] = df[f'expd2hitl1tk{i}'].fillna(-99999.)
+
+    if not addAbsDist:
+        df.drop(['d2hitl1tk1', 'd2hitl1tk2', 'd2hitl1tk3', 'd2hitl1tk4'],
+                axis=1,
+                inplace=True)
+
+    return df
 
 def stdTransform(x_train, x_test=None):
     Transformer = preprocessing.StandardScaler()
