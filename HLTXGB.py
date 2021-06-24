@@ -19,6 +19,7 @@ import time
 import glob
 import tqdm
 import gc
+import logging
 
 def getBestParam(seedname,tag):
     # note that optimized parameters always depend on the training set i.e. needs to be re-optimized when using different set
@@ -360,11 +361,14 @@ if __name__ == '__main__':
     import dask
     from dask.distributed import Client
     from distributed.diagnostics.progressbar import progress
+    logger = logging.getLogger("distributed.utils_perf")
+    logger.setLevel(logging.ERROR)
     dask.config.set({"temporary-directory": "/home/msoh/dask-temp/"})
     client = Client(processes=True,
                     n_workers=24,
                     threads_per_worker=1,
-                    memory_limit='4GB')
+                    memory_limit='6GB',
+                    silence_logs='error')
     print('*'*30)
     print('Dask Client:')
     print(client)
@@ -399,7 +403,7 @@ if __name__ == '__main__':
         else:
             timer[f'[1] Load {seedname} per file'] += res['time']/float(len(all_files))
 
-        gc.collect()
+    gc.collect()
 
     workers = [w for w in client.scheduler_info()['workers'].keys()]
     client.retire_workers(workers=workers)
