@@ -1,25 +1,25 @@
-import sys
+import sys, os
+import time
+import gc
+import logging
+import glob
+import math
+import json
+import hyperopt
+import pickle
+import tqdm
 import multiprocessing
 import numpy as np
 import pandas as pd
-from HLTIO import IO
-from HLTIO import preprocess
-from HLTvis import vis
-from HLTvis import postprocess
 import xgboost as xgb
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-import json
-import hyperopt
-import pickle
-import math
-import os
-import time
-import glob
-import tqdm
-import gc
-import logging
+
+from HLTIO import IO
+from HLTIO import preprocess
+from HLTvis import vis
+from HLTvis import postprocess
 
 def getBestParam(seedname,tag):
     # note that optimized parameters always depend on the training set i.e. needs to be re-optimized when using different set
@@ -354,11 +354,11 @@ if __name__ == '__main__':
                         help="seed types")
     parser.add_argument("-i", "--input",
                         action="store",
-                        dest="input", default='/home/common/TT_seedNtuple_GNN_v200622/ntuple*.root',
+                        dest="input", default='/home/common/TT_seedNtuple_GNN_v200622/ntuple_14*.root',
                         help="input ntuples, e.g. /X/Y/ntuple_*.root")
     parser.add_argument("-g", "--gpu",
                         action="store",
-                        dest="gpu", default=0, type=int,
+                        dest="gpu", default='0', type=str,
                         help="GPU id")
     parser.add_argument("--test",
                         action="store_true",
@@ -374,18 +374,16 @@ if __name__ == '__main__':
     ##############
     # -- Main -- #
     ##############
-    os.environ["CUDA_VISIBLE_DEVICES"]=args.gpu
-
     VER = args.ver
     NSAMPLE = args.nsample
     ntuple_path = args.input
     all_files = glob.glob(ntuple_path)
-
-    seedlist = ['NThltIterL3OI',
-                'NThltIter0','NThltIter2','NThltIter3',
-                'NThltIter0FromL1','NThltIter2FromL1','NThltIter3FromL1']
     seedlist =  args.seeds
-
+    for _seed in seedlist:
+        assert _seed in ['NThltIterL3OI',\
+                         'NThltIter0','NThltIter2','NThltIter3',\
+                         'NThltIter0FromL1','NThltIter2FromL1','NThltIter3FromL1']
+    os.environ["CUDA_VISIBLE_DEVICES"]=args.gpu
     print('-'*70)
     print(f'Version: {VER}')
     print(f'Input files: {len(all_files)} files from')
