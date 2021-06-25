@@ -211,7 +211,8 @@ def run(seedname, runname):
     doLoad = False
     isB = ('Barrel' in runname)
 
-    ntuple_path = 'data/ntuple_1-17.root'
+    # ntuple_path = 'data/ntuple_1-17.root'
+    ntuple_path = '/home/common/TT_seedNtuple_GNN_v200622/ntuple_94.root'
 
     print("\n\nStart: %s|%s" % (seedname, runname))
     data, y = IO.readMinSeeds(ntuple_path, 'seedNtupler/'+seedname, 0.,99999.,isB)
