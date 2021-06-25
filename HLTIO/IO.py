@@ -28,7 +28,7 @@ def dphi(phi1, phi2):
         tmpdphi = 2*math.pi - tmpdphi
     return tmpdphi
 
-def readSeedTree(path,treePath, minpt = 0, maxpt = 1e9, eta_bound = 0.9):
+def readSeedTree(path,treePath, minpt = 0, maxpt = 1e9, eta_bound = 0.9, isGNN = False):
     tree = uproot.open(path)[treePath]
                        # array_cache = '1000 MB',
                        # num_workers = 16)[treePath]
@@ -46,7 +46,7 @@ def readSeedTree(path,treePath, minpt = 0, maxpt = 1e9, eta_bound = 0.9):
     del df, tree
     gc.collect()
 
-    return preprocess.filterClass(df_B), preprocess.filterClass(df_E)
+    return preprocess.filterClass(df_B, isGNN), preprocess.filterClass(df_E, isGNN)
 
 def sampleByLabel(df, df_add = None, n = 500000):
     out = pd.DataFrame()

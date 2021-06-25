@@ -216,7 +216,7 @@ def run(seedname, runname):
     ntuple_path = '/home/common/TT_seedNtuple_GNN_v200622/ntuple_94.root'
 
     print("\n\nStart: %s|%s" % (seedname, runname))
-    data_y, df_E = IO.readSeedTree(ntuple_path, 'seedNtupler/'+seedname)
+    data_y, df_E = IO.readSeedTree(ntuple_path, 'seedNtupler/'+seedname, isGNN = True)
     data_y = data_y.append(df_E, ignore_index=True)
     data_y = data_y[['nHits',
                      'l1x1','l1y1','l1z1',
