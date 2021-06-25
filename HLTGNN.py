@@ -218,7 +218,7 @@ def run(seedname, runname):
     print("\n\nStart: %s|%s" % (seedname, runname))
     data_y, df_E = IO.readSeedTree(ntuple_path, 'seedNtupler/'+seedname, isGNN = True)
     data_y = data_y.append(df_E, ignore_index=True)
-    data_y = data_y[['nHits',
+    data_y = data_y[['y_label', 'nHits',
                      'l1x1','l1y1','l1z1',
                      'hitx1','hity1','hitz1',
                      'l1x2','l1y2','l1z2',
