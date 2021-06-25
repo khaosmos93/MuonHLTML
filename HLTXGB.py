@@ -318,29 +318,73 @@ def run(version, seedname, seed, tag, doLoad = False):
 
     return seedname, tag, (time.time() - time_init)
 
+def timer_summary(timer):
+    print('')
+    print('-'*70)
+    print(f'Timing summary: {VER}')
+    time_total = 0
+    for _key, _time in timer.items():
+        time_total += _time
+        unit = 'sec' if _time < 60. else 'min'
+        time = round((_time/60. if _time > 60. else _time), 2)
+        print(f'\t{_key}: {time} {unit}')
+    unit_total = 'sec' if time_total < 60. else 'min'
+    time_total = round((time_total/60. if time_total > 60. else time_total), 2)
+    print(f'Total: {time_total} {unit_total}')
+    print('-'*70)
+    return
+
 if __name__ == '__main__':
     from warnings import simplefilter
     simplefilter(action='ignore', category=FutureWarning)
 
-    # run_quick('NThltIter2FromL1')
-    # sys.exit()
+    import argparse
+    parser = argparse.ArgumentParser(description='XGB for muon HLT track seed classifier')
+    parser.add_argument("-v", "--ver",
+                        action="store",
+                        dest="ver", default="vTEST",
+                        help="model version")
+    parser.add_argument("-n", "--nsample",
+                        action="store",
+                        dest="nsample", default=500000, type=int,
+                        help="max number of seeds for each class")
+    parser.add_argument("-s", "--seeds",
+                        action="store",
+                        nargs="+", default=['NThltIter2FromL1'],
+                        help="seed types")
+    parser.add_argument("-i", "--input",
+                        action="store",
+                        dest="input", default='/home/common/TT_seedNtuple_GNN_v200622/ntuple*.root',
+                        help="input ntuples, e.g. /X/Y/ntuple_*.root")
+    parser.add_argument("-g", "--gpu",
+                        action="store",
+                        dest="gpu", default=0, type=int,
+                        help="GPU id")
+    parser.add_argument("--test",
+                        action="store_true",
+                        dest="test", default=False,
+                        help="run test job")
+    args = parser.parse_args()
+
+    if args.test:
+        print('Running test job')
+        run_quick('NThltIter2FromL1')
+        sys.exit()
 
     ##############
     # -- Main -- #
     ##############
-    gpu_id = sys.argv[2]
-    os.environ["CUDA_VISIBLE_DEVICES"]=gpu_id
+    os.environ["CUDA_VISIBLE_DEVICES"]=args.gpu
 
-    VER = 'vTEST9'
-    NSAMPLE = 500000
-
-    ntuple_path = '/home/common/TT_seedNtuple_GNN_v200622/ntuple*.root'
+    VER = args.ver
+    NSAMPLE = args.nsample
+    ntuple_path = args.input
     all_files = glob.glob(ntuple_path)
 
     seedlist = ['NThltIterL3OI',
                 'NThltIter0','NThltIter2','NThltIter3',
                 'NThltIter0FromL1','NThltIter2FromL1','NThltIter3FromL1']
-    seedlist = list(sys.argv[1].split(','))
+    seedlist =  args.seeds
 
     print('-'*70)
     print(f'Version: {VER}')
@@ -359,10 +403,10 @@ if __name__ == '__main__':
     from distributed.diagnostics.progressbar import progress
     logger = logging.getLogger("distributed.utils_perf")
     logger.setLevel(logging.ERROR)
-    dask.config.set({"temporary-directory": "/home/msoh/dask-temp/"})
+    dask.config.set({"temporary-directory": f"/home/{os.environ['USER']}/dask-temp/"})
     client = Client(
         processes=True,
-        n_workers=16,
+        n_workers=12,
         threads_per_worker=2,
         memory_limit='5GB',
         silence_logs=logging.ERROR
@@ -464,19 +508,7 @@ if __name__ == '__main__':
     print('>>> done!')
 
     # -- Timing summary -- #
-    print('')
-    print('-'*70)
-    print(f'Timing summary: {VER}')
-    time_total = 0
-    for _key, _time in timer.items():
-        time_total += _time
-        unit = 'sec' if _time < 60. else 'min'
-        time = round((_time/60. if _time > 60. else _time), 2)
-        print(f'\t{_key}: {time} {unit}')
-    unit_total = 'sec' if time_total < 60. else 'min'
-    time_total = round((time_total/60. if time_total > 60. else time_total), 2)
-    print(f'Total: {time_total} {unit_total}')
-    print('-'*70)
+    timer_summary(timer)
     # -- #
 
     print('Finished')
