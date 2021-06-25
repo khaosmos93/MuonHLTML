@@ -29,10 +29,15 @@ def dphi(phi1, phi2):
     return tmpdphi
 
 def readSeedTree(path,treePath, minpt = 0, maxpt = 1e9, eta_bound = 0.9, isGNN = False):
-    tree = uproot.open(path)[treePath]
-                       # array_cache = '1000 MB',
-                       # num_workers = 16)[treePath]
-    df = tree.arrays(library='pd')
+    hasTree = False
+    if len(glob.glob(path)) == 1:
+        df = (uproot.open(path)[treePath]).arrays(library='pd')
+                        # array_cache = '1000 MB',
+                        # num_workers = 16)[treePath]
+    else:
+        df = uproot.concatenate(f'{path}:{treePath}',
+                                num_workers = 16,
+                                library='pd')
 
     df = df[ df['gen_pt'] < maxpt ]
     df = df[ df['gen_pt'] > minpt ]
@@ -43,7 +48,7 @@ def readSeedTree(path,treePath, minpt = 0, maxpt = 1e9, eta_bound = 0.9, isGNN =
     df_B = df[((df['tsos_eta'] < eta_bound) & (df['tsos_eta'] > -eta_bound))].copy()
     df_E = df[((df['tsos_eta'] > eta_bound) | (df['tsos_eta'] < -eta_bound))].copy()
 
-    del df, tree
+    del df
     gc.collect()
 
     return preprocess.filterClass(df_B, isGNN), preprocess.filterClass(df_E, isGNN)

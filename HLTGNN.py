@@ -1,5 +1,6 @@
-import sys
+import sys, os
 import gc
+import tqdm
 import multiprocessing
 import numpy as np
 import pandas as pd
@@ -88,6 +89,8 @@ def trackletDataset(inputData,y):
     data_list = []
 
     for idx, row in inputData.iterrows():
+    # print('\n>>> Run trackletDataset')
+    # for idx, row in tqdm.tqdm(inputData.iterrows()):
         data_list.append( buildGraph(row,y[idx]) )
 
     return data_list
@@ -128,9 +131,8 @@ def train(train_loader,model,device,optimizer,wgts):
     loss_all = 0.
 
     for data in train_loader:
-        # HERE
-        print(data)
-        sys.exit()
+    # print('\n>>> Run train')
+    # for data in tqdm.tqdm(train_loader):
         data = data.to(device)
         optimizer.zero_grad()
         output = model(data)
@@ -141,7 +143,7 @@ def train(train_loader,model,device,optimizer,wgts):
         loss_all += data.num_graphs * lossOut.item()
         optimizer.step()
 
-    print('loss_all = %d' % (loss_all))
+    # print('loss_all = %d' % (loss_all))
 
     return loss_all / len(train_loader.dataset)
 
@@ -164,6 +166,10 @@ def evaluate(loader,model,device):
     return predictions, labels
 
 def GNN(data_list, y, seedname, runname):
+    plotdir = 'plot_GNN'
+    if not os.path.isdir(plotdir):
+        os.makedirs(plotdir)
+
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     x_train, x_test, y_train, y_test = preprocess.split(data_list, y)
 
@@ -174,8 +180,10 @@ def GNN(data_list, y, seedname, runname):
     optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
     _, __, wgts = preprocess.computeClassWgt(y_train, y_test)
 
-    for epoch in range(100):
-        print('Epoch = %d' % (epoch))
+    # for epoch in range(100):
+    print('\n>>> Epoch')
+    for epoch in tqdm.tqdm(range(10)):
+        # print('Epoch = %d' % (epoch))
         train(train_loader,model,device,optimizer,wgts)
 
     pred_train, y_train = evaluate(train_loader,model,device)
@@ -193,18 +201,18 @@ def GNN(data_list, y, seedname, runname):
             np.asarray(y_train==cat,dtype=np.int),
             np.asarray(y_test==cat, dtype=np.int)
         )
-        vis.drawROC( fpr_Train, tpr_Train, AUC_Train, fpr_Test, tpr_Test, AUC_Test, runname+'_'+seedname+r'_ROC1_cat%d' % cat)
-        vis.drawROC2(fpr_Train, tpr_Train, AUC_Train, fpr_Test, tpr_Test, AUC_Test, runname+'_'+seedname+r'_ROC2_cat%d' % cat)
-        vis.drawThr(  thr_Train, tpr_Train, thr_Test, tpr_Test,  runname+'_'+seedname+r'_Thr1_cat%d' % cat)
-        vis.drawThr2( thr_Train, tpr_Train, thr_Test, tpr_Test,  runname+'_'+seedname+r'_Thr2_cat%d' % cat)
+        vis.drawROC( fpr_Train, tpr_Train, AUC_Train, fpr_Test, tpr_Test, AUC_Test, runname+'_'+seedname+r'_ROC1_cat%d' % cat, plotdir)
+        vis.drawROC2(fpr_Train, tpr_Train, AUC_Train, fpr_Test, tpr_Test, AUC_Test, runname+'_'+seedname+r'_ROC2_cat%d' % cat, plotdir)
+        vis.drawThr(  thr_Train, tpr_Train, thr_Test, tpr_Test,  runname+'_'+seedname+r'_Thr1_cat%d' % cat, plotdir)
+        vis.drawThr2( thr_Train, tpr_Train, thr_Test, tpr_Test,  runname+'_'+seedname+r'_Thr2_cat%d' % cat, plotdir)
 
     confMat, confMatAbs = postprocess.confMat(y_test,lab_test)
-    vis.drawConfMat(confMat,   runname+'_'+seedname+'_testConfMatNorm')
-    vis.drawConfMat(confMatAbs,runname+'_'+seedname+'_testConfMat', doNorm = False)
+    vis.drawConfMat(confMat,   runname+'_'+seedname+'_testConfMatNorm', plotdir)
+    vis.drawConfMat(confMatAbs,runname+'_'+seedname+'_testConfMat', plotdir, doNorm = False)
 
     confMatTrain, confMatTrainAbs = postprocess.confMat(y_train,lab_train)
-    vis.drawConfMat(confMatTrain,   runname+'_'+seedname+'_trainConfMatNorm')
-    vis.drawConfMat(confMatTrainAbs,runname+'_'+seedname+'_trainConfMat', doNorm = False)
+    vis.drawConfMat(confMatTrain,   runname+'_'+seedname+'_trainConfMatNorm', plotdir)
+    vis.drawConfMat(confMatTrainAbs,runname+'_'+seedname+'_trainConfMat', plotdir, doNorm = False)
 
     return
 
@@ -213,20 +221,25 @@ def run(seedname, runname):
     isB = ('Barrel' in runname)
 
     # ntuple_path = 'data/ntuple_1-17.root'
-    ntuple_path = '/home/common/TT_seedNtuple_GNN_v200622/ntuple_94.root'
+    ntuple_path = '/home/common/TT_seedNtuple_GNN_v200622/ntuple_*.root'
 
     print("\n\nStart: %s|%s" % (seedname, runname))
     data_y, df_E = IO.readSeedTree(ntuple_path, 'seedNtupler/'+seedname, isGNN = True)
-    data_y = data_y.append(df_E, ignore_index=True)
+    # data_y = data_y.append(df_E, ignore_index=True)
     data_y = data_y[['y_label', 'nHits',
                      'l1x1','l1y1','l1z1',
                      'hitx1','hity1','hitz1',
                      'l1x2','l1y2','l1z2',
                      'hitx2','hity2','hitz2',
                      'l1x3','l1y3','l1z3',
-                     'hitx3','hity3','hitz3',
-                     'l1x4','l1y4','l1z4',
-                     'hitx4','hity4','hitz4']]
+                     'hitx3','hity3','hitz3']]
+                     # 'l1x4','l1y4','l1z4',
+                     # 'hitx4','hity4','hitz4']]
+
+    data_y = IO.sampleByLabel(data_y, n = 500000)
+
+    # HERE
+    print(data_y)
 
     data = data_y.drop(['y_label'], axis=1)
     y = data_y.loc[:,'y_label'].values
@@ -237,10 +250,6 @@ def run(seedname, runname):
     # HERE
     # print(data)
     # print(y)
-    data = data[:5]
-    y = y[:5]
-    print(data)
-    print(y)
 
     select = data['nHits']>0
     select_np = select.to_numpy()
@@ -254,15 +263,20 @@ def run(seedname, runname):
     # print(y)
     # sys.exit()
 
+    colname = list(data.columns)
+    print(colname)
+    print(seedname+"|"+runname + r' C0: %d, C1: %d, C2: %d, C3: %d' % \
+        ( (y==0).sum(), (y==1).sum(), (y==2).sum(), (y==3).sum() ) )
+
     data_list = trackletDataset(data, y)
 
     # HERE
-    print(data_list)
+    # print(data_list)
 
     GNN(data_list,y,seedname,runname)
 
 if __name__ == '__main__':
-    run('NThltIter2','test')
+    run('NThltIter2FromL1','test')
 
 
 

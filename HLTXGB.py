@@ -143,8 +143,6 @@ def doXGB(version, seed, seedname, tag, doLoad, stdTransPar=None):
     param['num_class'] = 4
     param['subsample'] = 0.5
     param['eval_metric'] = 'mlogloss'
-
-    # HERE CPU
     param['tree_method'] = 'gpu_hist'
     param['nthread'] = 4
 
@@ -318,6 +316,42 @@ def run(version, seedname, seed, tag, doLoad = False):
 
     return seedname, tag, (time.time() - time_init)
 
+def append_all(futures_load, timer):
+    results_load = {}
+    for out in tqdm.tqdm(futures_load):
+        res = out.result()
+        seedname = res['seedname']
+        if seedname not in results_load.keys():
+            results_load[seedname] = {'df_B': [res['df_B']], 'df_E': [res['df_E']]}
+        else:
+            results_load[seedname]['df_B'].append(res['df_B'])
+            results_load[seedname]['df_E'].append(res['df_E'])
+
+        if f'[1] Load {seedname} per file' not in timer.keys():
+            timer[f'[1] Load {seedname} per file'] = res['time']/float(len(all_files))
+        else:
+            timer[f'[1] Load {seedname} per file'] += res['time']/float(len(all_files))
+        del out, res
+        gc.collect()
+    return results_load, timer
+
+def merge_and_downsample(results_load):
+    for seedname in tqdm.tqdm(results_load.keys()):
+        results_load[seedname]['df_B'] = pd.concat(
+            (df for df in results_load[seedname]['df_B']),
+            axis=0, ignore_index=True
+        )
+        results_load[seedname]['df_B'] = IO.sampleByLabel(results_load[seedname]['df_B'],
+                                                          n = NSAMPLE)
+        results_load[seedname]['df_E'] = pd.concat(
+            (df for df in results_load[seedname]['df_E']),
+            axis=0, ignore_index=True
+        )
+        results_load[seedname]['df_E'] = IO.sampleByLabel(results_load[seedname]['df_E'],
+                                                          n = NSAMPLE)
+        gc.collect()
+    return results_load
+
 def timer_summary(timer):
     print('')
     print('-'*70)
@@ -431,24 +465,7 @@ if __name__ == '__main__':
     ################################################
     print(f'\n>>> Append dataframes')
     time_append = time.time()
-
-    results_load = {}
-    for out in tqdm.tqdm(futures_load):
-        res = out.result()
-        seedname = res['seedname']
-        if seedname not in results_load.keys():
-            results_load[seedname] = {'df_B': [res['df_B']], 'df_E': [res['df_E']]}
-        else:
-            results_load[seedname]['df_B'].append(res['df_B'])
-            results_load[seedname]['df_E'].append(res['df_E'])
-
-        if f'[1] Load {seedname} per file' not in timer.keys():
-            timer[f'[1] Load {seedname} per file'] = res['time']/float(len(all_files))
-        else:
-            timer[f'[1] Load {seedname} per file'] += res['time']/float(len(all_files))
-        del out, res
-        gc.collect()
-
+    results, timer = append_all(futures_load, timer)
     timer[f'[2] Append'] = time.time() - time_append
     workers = [w for w in client.scheduler_info()['workers'].keys()]
     client.retire_workers(workers=workers)
@@ -460,21 +477,7 @@ if __name__ == '__main__':
     ################################################
     print(f'\n>>> Merge and Downsample')
     time_down = time.time()
-    for seedname in tqdm.tqdm(results_load.keys()):
-        results_load[seedname]['df_B'] = pd.concat(
-            (df for df in results_load[seedname]['df_B']),
-            axis=0, ignore_index=True
-        )
-        results_load[seedname]['df_B'] = IO.sampleByLabel(results_load[seedname]['df_B'],
-                                                          n = NSAMPLE)
-        results_load[seedname]['df_E'] = pd.concat(
-            (df for df in results_load[seedname]['df_E']),
-            axis=0, ignore_index=True
-        )
-        results_load[seedname]['df_E'] = IO.sampleByLabel(results_load[seedname]['df_E'],
-                                                          n = NSAMPLE)
-        gc.collect()
-
+    results = merge_and_downsample(results)
     timer[f'[3] Merge and Downsample'] = time.time() - time_down
     gc.collect()
     print('>>> done!')
@@ -483,7 +486,7 @@ if __name__ == '__main__':
     ################################################
     print('\n>>> Running xgboost')
     run_list = []
-    for seedname, res in results_load.items():
+    for seedname, res in results.items():
         seed_label_B = (
             IO.dropDummyColumn(res['df_B']).drop(['y_label'], axis=1),
             res['df_B'].loc[:,'y_label'].values
