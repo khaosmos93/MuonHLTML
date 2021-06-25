@@ -1,4 +1,5 @@
 import sys
+import gc
 import multiprocessing
 import numpy as np
 import pandas as pd
@@ -215,16 +216,23 @@ def run(seedname, runname):
     ntuple_path = '/home/common/TT_seedNtuple_GNN_v200622/ntuple_94.root'
 
     print("\n\nStart: %s|%s" % (seedname, runname))
-    data, y = IO.readMinSeeds(ntuple_path, 'seedNtupler/'+seedname, 0.,99999.,isB)
-    data = data[['nHits',
-                 'l1x1','l1y1','l1z1',
-                 'hitx1','hity1','hitz1',
-                 'l1x2','l1y2','l1z2',
-                 'hitx2','hity2','hitz2',
-                 'l1x3','l1y3','l1z3',
-                 'hitx3','hity3','hitz3',
-                 'l1x4','l1y4','l1z4',
-                 'hitx4','hity4','hitz4']]
+    data_y, df_E = IO.readSeedTree(ntuple_path, 'seedNtupler/'+seedname)
+    data_y = data_y.append(df_E, ignore_index=True)
+    data_y = data_y[['nHits',
+                     'l1x1','l1y1','l1z1',
+                     'hitx1','hity1','hitz1',
+                     'l1x2','l1y2','l1z2',
+                     'hitx2','hity2','hitz2',
+                     'l1x3','l1y3','l1z3',
+                     'hitx3','hity3','hitz3',
+                     'l1x4','l1y4','l1z4',
+                     'hitx4','hity4','hitz4']]
+
+    data = data_y.drop(['y_label'], axis=1)
+    y = data_y.loc[:,'y_label'].values
+
+    del df_E, data_y
+    gc.collect()
 
     # HERE
     # print(data)
